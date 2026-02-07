@@ -78,7 +78,6 @@ class ChatGPTBrowser:
             viewport={"width": 1280, "height": 900},
             ignore_default_args=["--enable-automation", "--no-sandbox"],
             args=[
-                "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
                 "--no-default-browser-check",
             ],
@@ -119,9 +118,14 @@ class ChatGPTBrowser:
                 return  # success
             except Exception as exc:
                 last_error = exc
+                # Log current URL and error for diagnostics
+                try:
+                    current_url = self.page.url
+                except Exception:
+                    current_url = "<unavailable>"
                 logger.warning(
-                    "Navigation Versuch %d/%d fehlgeschlagen, starte Browser neu...",
-                    attempt, NAV_MAX_RETRIES,
+                    "Navigation Versuch %d/%d fehlgeschlagen: %s (URL: %s)",
+                    attempt, NAV_MAX_RETRIES, exc, current_url,
                 )
                 if attempt < NAV_MAX_RETRIES:
                     await self._restart()
