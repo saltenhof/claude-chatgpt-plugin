@@ -80,10 +80,14 @@ class ChatGPTBrowser:
             args=[
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--disable-session-crashed-bubble",
             ],
         )
+        # Use first page; close any extra tabs restored from a previous session
         if self._context.pages:
             self._page = self._context.pages[0]
+            for extra in self._context.pages[1:]:
+                await extra.close()
         else:
             self._page = await self._context.new_page()
 
