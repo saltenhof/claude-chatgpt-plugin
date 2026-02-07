@@ -40,7 +40,7 @@ async def _get_browser() -> ChatGPTBrowser:
     if _browser is None:
         logger.info("Starte Browser (erster Aufruf)...")
         _browser = ChatGPTBrowser()
-        await _browser.start(headless=True)
+        await _browser.start(headless=False)
     return _browser
 
 
