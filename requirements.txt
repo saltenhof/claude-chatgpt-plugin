@@ -1,0 +1,5 @@
+playwright>=1.40
+playwright-stealth>=2.0
+click>=8.0
+pyperclip>=1.8
+mcp>=1.2
