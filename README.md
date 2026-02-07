@@ -124,6 +124,58 @@ python chatgpt_bridge.py send -m "Hello" --headless
 |----------|---------|-------------|
 | `CHATGPT_BRIDGE_DATA` | `~/.chatgpt-bridge` | Base directory for browser profile and data |
 
+## Troubleshooting
+
+### Debug workflow: switch to visible browser
+
+When `chatgpt_send` hangs or returns an error, the root cause is usually invisible in headless mode. To diagnose:
+
+1. In `mcp_server.py`, change `headless=True` to `headless=False` in `_get_browser()`
+2. Deploy the change (see "Plugin update workflow" below)
+3. Restart Claude Code and trigger `chatgpt_send` again
+4. Watch the Chrome window to identify the problem
+5. Fix the issue, set back to `headless=True`, deploy again
+
+### Known error patterns
+
+| Symptom | Visible-browser diagnosis | Root cause | Fix |
+|---------|--------------------------|------------|-----|
+| `chatgpt_send` hangs for ~90s, then "nicht erreichbar nach 3 Versuchen" | Chrome shows "restore session?" dialog, blocks all automation | Browser profile wasn't shut down cleanly (crash, kill, timeout) | `--disable-session-crashed-bubble` Chrome flag (already applied). If it recurs: delete `~/.chatgpt-bridge/user_data/` and re-login |
+| Same timeout, no dialog | Two tabs open — empty active tab + ChatGPT in background tab | Chrome restored previous session tabs | Extra tabs are now closed on startup in `_launch_context()`. If it recurs: check for new Chrome restore behavior |
+| Same timeout, page loads but no textarea | Cloudflare challenge or ChatGPT maintenance page | Anti-bot detection or service outage | Retry later. If persistent: check if `playwright-stealth` needs update |
+| "Nicht eingeloggt" error | Login/register buttons visible on ChatGPT | Session expired or cookies lost | Run `python chatgpt_bridge.py login` again |
+| `chatgpt_send` returns old/wrong response | N/A (logic issue) | In conversation-continuation mode, response detection picked up a stale message | Should not happen with `previous_count` polling. If it does: check if ChatGPT changed `[data-message-author-role="assistant"]` selector |
+| Chrome warning banner "unsupported command-line flag" | Yellow bar at top of browser window | `--disable-blink-features=AutomationControlled` in args | Flag was removed. If it reappears: check `browser.py` args list |
+
+### Plugin update workflow
+
+The plugin system caches aggressively. A simple `plugin install` may not pick up new code. Full update sequence:
+
+```bash
+# 1. Update marketplace cache (fetches latest git commits)
+claude plugin marketplace update chatgpt-automation
+
+# 2. Uninstall current version
+claude plugin uninstall chatgpt-bridge
+
+# 3. Clear the file cache (critical — otherwise old version persists)
+rm -rf ~/.claude/plugins/cache/chatgpt-automation
+
+# 4. Reinstall from fresh marketplace cache
+claude plugin install chatgpt-bridge
+
+# 5. Restart Claude Code for MCP server to reload
+```
+
+To verify the deployed version:
+```bash
+# Check commit SHA
+grep gitCommitSha ~/.claude/plugins/installed_plugins.json
+
+# Check specific code is present
+grep "new_chat" ~/.claude/plugins/cache/chatgpt-automation/chatgpt-bridge/*/mcp_server.py
+```
+
 ## Alternative: Manual MCP registration (without plugin)
 
 If you prefer not to use the plugin system:
