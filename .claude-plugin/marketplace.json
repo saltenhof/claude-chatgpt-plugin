@@ -1,0 +1,24 @@
+{
+  "name": "chatgpt-automation",
+  "owner": {
+    "name": "saltenhof"
+  },
+  "metadata": {
+    "description": "Claude Code plugins for ChatGPT browser automation",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "chatgpt-bridge",
+      "source": "./",
+      "description": "MCP server that lets Claude Code interact with ChatGPT via browser automation",
+      "version": "1.0.0",
+      "author": {
+        "name": "saltenhof"
+      },
+      "repository": "https://github.com/saltenhof/claude-chatgpt-plugin",
+      "license": "MIT",
+      "keywords": ["chatgpt", "mcp", "browser-automation", "playwright"]
+    }
+  ]
+}
