@@ -6,7 +6,6 @@ MCP server that lets Claude Code interact with ChatGPT via Playwright browser au
 
 - Python 3.10+
 - Google Chrome installed
-- pip dependencies (see below)
 
 ## Installation
 
@@ -17,28 +16,31 @@ pip install playwright playwright-stealth click pyperclip mcp
 playwright install chrome
 ```
 
-### 2. One-time ChatGPT login
-
-The plugin uses a persistent Chrome profile stored in `~/.chatgpt-bridge/user_data/`. You need to log in once:
+### 2. Install the plugin
 
 ```bash
-# Clone the repo (or use the plugin's install location)
+# Add the marketplace
+claude plugin marketplace add saltenhof/claude-chatgpt-plugin
+
+# Install the plugin (user scope = available in all projects)
+claude plugin install chatgpt-bridge
+```
+
+### 3. One-time ChatGPT login
+
+The plugin runs Chrome headless — but the first login needs a visible browser window for Google SSO. Clone the repo and run:
+
+```bash
+git clone https://github.com/saltenhof/claude-chatgpt-plugin.git
+cd claude-chatgpt-plugin
 python chatgpt_bridge.py login
 ```
 
-This opens a browser window. Log in to ChatGPT via Google SSO. The session is saved automatically.
+This opens Chrome, you log in manually, and the session is persisted to `~/.chatgpt-bridge/user_data/`. After that, the plugin works headless without further interaction.
 
-### 3. Install the plugin
+### 4. Restart Claude Code
 
-```bash
-claude plugin install chatgpt-bridge@saltenhof/claude-chatgpt-plugin
-```
-
-Or add manually:
-
-```bash
-claude mcp add --transport stdio --scope user chatgpt-bridge -- python /path/to/mcp_server.py
-```
+The MCP server starts automatically when Claude Code launches. After installing the plugin, restart Claude Code (or start a new session) for the tools to appear.
 
 ## MCP Tools
 
@@ -47,34 +49,73 @@ claude mcp add --transport stdio --scope user chatgpt-bridge -- python /path/to/
 | `chatgpt_send` | `message` (required), `file_path` (optional) | Send a message to ChatGPT, get markdown response |
 | `chatgpt_status` | — | Check browser and login status |
 
-## CLI Usage (for login and debugging)
+## Design Decisions
 
-```bash
-# Manual login (opens browser window)
-python chatgpt_bridge.py login
+### Browser profile in home directory
 
-# Send a message via CLI
-python chatgpt_bridge.py send -m "Hello"
+The Chrome profile (cookies, localStorage, login session) is stored at `~/.chatgpt-bridge/user_data/` — **not** inside the plugin directory. This is intentional:
 
-# Send with file attachment
-python chatgpt_bridge.py send -m "Review this" -f document.md
-```
+- The plugin cache (`~/.claude/plugins/...`) is ephemeral and gets replaced on plugin updates
+- The login session must survive plugin updates, otherwise you'd have to re-login every time
+- The path is configurable via the `CHATGPT_BRIDGE_DATA` environment variable
 
-## Configuration
+### Lazy browser initialization
 
-The browser profile is stored at `~/.chatgpt-bridge/user_data/` by default. Override with the `CHATGPT_BRIDGE_DATA` environment variable:
+The browser is **not** started when the MCP server launches. It starts on the first `chatgpt_send` call and then stays alive for subsequent calls. This means:
 
-```bash
-export CHATGPT_BRIDGE_DATA=/custom/path
-```
+- No Chrome process running when you're not using the tool
+- First call is slower (~5-10s for browser startup + navigation)
+- Subsequent calls are fast (browser already on chatgpt.com)
+
+### Login stays CLI-only
+
+Login requires a visible browser window for Google SSO interaction. This doesn't fit the MCP model (headless, no UI), so login remains a separate CLI command. The MCP server checks login status on every call and returns a clear error if not logged in.
+
+### Response extraction via clipboard
+
+ChatGPT responses are extracted by clicking the "copy" button on the last assistant message, which copies **markdown** to the clipboard. This preserves formatting (code blocks, lists, headers) that would be lost with a plain DOM scrape. Fallback chain: clipboard → JS clipboard API → DOM inner_text().
 
 ## Architecture
 
 ```
-mcp_server.py          FastMCP server (stdio transport)
-  ├── chatgpt_bridge.py  Core message logic (send_message)
-  ├── browser.py         Playwright browser lifecycle
-  └── chatgpt_selectors.py  CSS selector registry
+mcp_server.py              FastMCP server (stdio transport)
+  ├── _get_browser()       Lazy-init, cached global ChatGPTBrowser instance
+  ├── chatgpt_send()       MCP tool → calls send_message()
+  └── chatgpt_status()     MCP tool → checks browser state
+      │
+      ├── chatgpt_bridge.py    Core logic: send_message(), file upload, response extraction
+      ├── browser.py           Playwright lifecycle, navigation retries, stealth
+      └── chatgpt_selectors.py CSS selector registry (German + English variants)
 ```
 
-The browser session is lazy-initialized on the first tool call and persists across subsequent calls.
+## CLI Usage (for login and debugging)
+
+```bash
+# Manual login (opens visible browser window)
+python chatgpt_bridge.py login
+
+# Send a message via CLI (useful for debugging)
+python chatgpt_bridge.py send -m "Hello"
+
+# Send with file attachment
+python chatgpt_bridge.py send -m "Review this" -f document.md
+
+# Headless mode
+python chatgpt_bridge.py send -m "Hello" --headless
+```
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHATGPT_BRIDGE_DATA` | `~/.chatgpt-bridge` | Base directory for browser profile and data |
+
+## Alternative: Manual MCP registration (without plugin)
+
+If you prefer not to use the plugin system:
+
+```bash
+claude mcp add --transport stdio --scope user chatgpt-bridge -- python /path/to/mcp_server.py
+```
+
+Set `PYTHONPATH` to the directory containing the Python files if they're not in the current working directory.
