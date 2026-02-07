@@ -31,6 +31,7 @@ mcp = FastMCP("chatgpt-bridge")
 # ---------------------------------------------------------------------------
 
 _browser: ChatGPTBrowser | None = None
+_navigated: bool = False
 
 
 async def _get_browser() -> ChatGPTBrowser:
@@ -43,11 +44,21 @@ async def _get_browser() -> ChatGPTBrowser:
     return _browser
 
 
-async def _ensure_ready() -> ChatGPTBrowser:
-    """Get browser, navigate to ChatGPT, and verify login."""
+async def _ensure_ready(new_chat: bool = True) -> ChatGPTBrowser:
+    """Get browser, optionally navigate to ChatGPT, and verify login.
+
+    Args:
+        new_chat: If True (default), navigate to chatgpt.com to start a fresh
+            chat.  If False and the browser has already navigated at least once,
+            skip navigation so the current conversation is preserved.
+    """
+    global _navigated
     browser = await _get_browser()
-    await browser.navigate_to_chat()
-    await browser.dismiss_cookie_consent()
+
+    if new_chat or not _navigated:
+        await browser.navigate_to_chat()
+        await browser.dismiss_cookie_consent()
+        _navigated = True
 
     if not await browser.is_logged_in():
         raise RuntimeError(
@@ -61,14 +72,20 @@ async def _ensure_ready() -> ChatGPTBrowser:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def chatgpt_send(message: str, file_path: str | None = None) -> str:
+async def chatgpt_send(
+    message: str,
+    file_path: str | None = None,
+    new_chat: bool = True,
+) -> str:
     """Send a message to ChatGPT and return the response as markdown.
 
     Args:
         message: The message to send to ChatGPT.
         file_path: Optional absolute path to a file to attach.
+        new_chat: If True (default), navigate to chatgpt.com to start a fresh
+            chat.  If False, continue in the current conversation.
     """
-    browser = await _ensure_ready()
+    browser = await _ensure_ready(new_chat)
     return await send_message(browser.page, message, file_path)
 
 

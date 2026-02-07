@@ -46,8 +46,22 @@ The MCP server starts automatically when Claude Code launches. After installing 
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `chatgpt_send` | `message` (required), `file_path` (optional) | Send a message to ChatGPT, get markdown response |
+| `chatgpt_send` | `message` (required), `file_path` (optional), `new_chat` (optional, default `true`) | Send a message to ChatGPT, get markdown response |
 | `chatgpt_status` | — | Check browser and login status |
+
+### Conversation continuation
+
+By default, every `chatgpt_send` call navigates to chatgpt.com and starts a **fresh chat**. To continue in the current conversation instead, pass `new_chat: false`:
+
+```
+# First message — starts a new chat (default)
+chatgpt_send(message="Explain Python decorators")
+
+# Follow-up — stays in the same conversation
+chatgpt_send(message="Now show me a caching example", new_chat=false)
+```
+
+On the very first call (browser not yet navigated), `new_chat: false` still navigates once to establish the session.
 
 ## Design Decisions
 

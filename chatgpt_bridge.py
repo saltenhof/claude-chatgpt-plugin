@@ -42,6 +42,10 @@ async def send_message(page, message: str, file_path: str | None = None) -> str:
 
     Returns the response as markdown text (or plain text fallback).
     """
+    # --- count existing assistant messages (for conversation-continuation) ---
+    existing_msgs = await page.query_selector_all(ASSISTANT_MESSAGE)
+    previous_count = len(existing_msgs)
+
     # --- optional file upload ---
     if file_path:
         await _upload_file(page, file_path)
@@ -67,7 +71,7 @@ async def send_message(page, message: str, file_path: str | None = None) -> str:
         await send_btn.click(force=True)
 
     # --- wait for response & grab via copy button ---
-    return await _wait_and_copy_response(page)
+    return await _wait_and_copy_response(page, previous_count)
 
 
 # ---------------------------------------------------------------------------
@@ -195,21 +199,32 @@ async def _wait_for_upload_complete(page, timeout_ms: int = UPLOAD_TIMEOUT_MS) -
     logger.warning("Upload-Timeout erreicht, sende trotzdem...")
 
 
-async def _wait_and_copy_response(page) -> str:
+async def _wait_and_copy_response(page, previous_count: int = 0) -> str:
     """Wait for ChatGPT to finish responding, then extract via copy button.
 
+    Args:
+        previous_count: Number of assistant messages already present before
+            sending.  The function polls until a *new* message appears
+            (count > previous_count), which is essential for conversation
+            continuation where old assistant messages already exist.
+
     Strategy:
-      1. Wait for an assistant message to appear in the DOM.
+      1. Poll until a new assistant message appears (count > previous_count).
       2. Wait for generation to complete (stop button disappears).
       3. Hover over the assistant's conversation turn to reveal action buttons.
       4. Click the copy button within that turn -> markdown in clipboard.
       5. Read clipboard. Fallback: DOM inner_text().
     """
-    # Step 1: Wait for assistant message to appear
-    try:
-        await page.wait_for_selector(ASSISTANT_MESSAGE, timeout=30000)
-    except Exception:
-        logger.error("Keine Assistant-Antwort erkannt.")
+    # Step 1: Poll until a NEW assistant message appears
+    elapsed_ms = 0
+    while elapsed_ms < 30000:
+        msgs = await page.query_selector_all(ASSISTANT_MESSAGE)
+        if len(msgs) > previous_count:
+            break
+        await page.wait_for_timeout(RESPONSE_POLL_INTERVAL_MS)
+        elapsed_ms += RESPONSE_POLL_INTERVAL_MS
+    else:
+        logger.error("Keine neue Assistant-Antwort erkannt.")
         return ""
 
     # Step 2: Wait for generation to complete (stop button gone)
