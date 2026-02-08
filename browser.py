@@ -3,16 +3,20 @@
 import asyncio
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 from playwright.async_api import async_playwright, BrowserContext, Page
 from playwright_stealth import Stealth
 
 from chatgpt_selectors import (
+    CHATGPT_ERROR_DIALOGS,
     CHATGPT_URL,
+    CLOUDFLARE_CHALLENGE,
     COOKIE_ACCEPT_BTN,
     LOGGED_IN_INDICATORS,
     NOT_LOGGED_IN_INDICATORS,
+    SESSION_EXPIRED_INDICATORS,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +56,107 @@ class ChatGPTBrowser:
         if self._page is None:
             raise RuntimeError("Browser not started. Call start() first.")
         return self._page
+
+    @property
+    def headless(self) -> bool:
+        """Return current headless mode setting."""
+        return self._headless
+
+    async def switch_mode(self, headless: bool) -> None:
+        """Switch browser between headless and visible mode via full restart.
+
+        The persistent profile (cookies, localStorage) is preserved because
+        it lives on disk in USER_DATA_DIR.
+        """
+        self._headless = headless
+        await self._restart()
+
+    def is_context_alive(self) -> bool:
+        """Check whether the browser context and page are still usable.
+
+        Returns True if the page can execute a trivial JS expression,
+        False if the context has crashed, been closed, or is otherwise dead.
+        This is a synchronous check — callers should use the async wrapper
+        ``check_context_alive()`` in async code.
+        """
+        if self._context is None or self._page is None:
+            return False
+        try:
+            # Playwright page objects expose .is_closed() synchronously
+            return not self._page.is_closed()
+        except Exception:
+            return False
+
+    async def check_context_alive(self) -> bool:
+        """Async liveness probe: evaluates JS on the page."""
+        if not self.is_context_alive():
+            return False
+        try:
+            await self._page.evaluate("document.readyState")
+            return True
+        except Exception:
+            return False
+
+    async def take_screenshot(self, path: str | None = None) -> str:
+        """Capture a screenshot of the current page for diagnostics.
+
+        Args:
+            path: Optional file path. If None, a temp file is created.
+
+        Returns:
+            Absolute path to the saved screenshot PNG.
+        """
+        if path is None:
+            fd, path = tempfile.mkstemp(suffix=".png", prefix="chatgpt_diag_")
+            os.close(fd)
+        await self.page.screenshot(path=path, full_page=False)
+        logger.info("Screenshot saved: %s", path)
+        return path
+
+    async def detect_and_dismiss_errors(self) -> str | None:
+        """Detect and auto-dismiss common ChatGPT error states.
+
+        Checks (in order):
+          1. Cloudflare challenge — cannot be dismissed automatically.
+          2. Session-expired indicators — signals re-login is needed.
+          3. ChatGPT error dialogs ("Try again", "Regenerate") — auto-clicks.
+
+        Returns:
+            A short description of the detected problem, or None if all clear.
+        """
+        page = self.page
+
+        # 1. Cloudflare challenge (cannot auto-dismiss in headless)
+        try:
+            cf_element = await page.query_selector(CLOUDFLARE_CHALLENGE)
+            if cf_element and await cf_element.is_visible():
+                return "cloudflare_challenge"
+        except Exception:
+            pass
+
+        # 2. Session expired
+        try:
+            expired = await page.query_selector(SESSION_EXPIRED_INDICATORS)
+            if expired and await expired.is_visible():
+                return "session_expired"
+        except Exception:
+            pass
+
+        # 3. Error dialogs — try to auto-dismiss
+        try:
+            error_btn = await page.query_selector(CHATGPT_ERROR_DIALOGS)
+            if error_btn and await error_btn.is_visible():
+                tag = await error_btn.evaluate("el => el.tagName.toLowerCase()")
+                if tag == "button":
+                    await error_btn.click()
+                    await page.wait_for_timeout(1000)
+                    logger.info("Auto-dismissed ChatGPT error dialog.")
+                    return "error_dialog_dismissed"
+                return "error_dialog_visible"
+        except Exception:
+            pass
+
+        return None
 
     async def start(self, headless: bool = False) -> None:
         """Launch system Chrome with a persistent profile and clipboard permissions."""
@@ -134,8 +239,13 @@ class ChatGPTBrowser:
                 if attempt < NAV_MAX_RETRIES:
                     await self._restart()
 
+        try:
+            current_url = self.page.url
+        except Exception:
+            current_url = "<unavailable>"
         raise RuntimeError(
-            f"ChatGPT nicht erreichbar nach {NAV_MAX_RETRIES} Versuchen"
+            f"ChatGPT nicht erreichbar nach {NAV_MAX_RETRIES} Versuchen "
+            f"(letzte URL: {current_url}, headless={self._headless})"
         ) from last_error
 
     async def dismiss_cookie_consent(self) -> None:

@@ -29,6 +29,9 @@ RESPONSE_TIMEOUT_MS = 300_000  # 5 minutes
 UPLOAD_TIMEOUT_MS = 60_000
 UPLOAD_POLL_INTERVAL_MS = 500
 
+# Overall timeout for send_message (prevents indefinite blocking)
+SEND_TIMEOUT_S = 360
+
 
 # ---------------------------------------------------------------------------
 # Core message logic (reusable from CLI and MCP server)
@@ -39,9 +42,32 @@ async def send_message(page, message: str, file_path: str | None = None) -> str:
 
     This function handles: optional file upload, typing the message,
     pressing Enter, and waiting for + extracting the response.
+    Wraps the actual implementation with an overall timeout guard
+    to prevent indefinite blocking.
 
     Returns the response as markdown text (or plain text fallback).
+
+    Raises:
+        TimeoutError: If the entire send/receive cycle exceeds SEND_TIMEOUT_S.
     """
+    try:
+        return await asyncio.wait_for(
+            _send_message_impl(page, message, file_path),
+            timeout=SEND_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        try:
+            current_url = page.url
+        except Exception:
+            current_url = "<unavailable>"
+        raise TimeoutError(
+            f"send_message Gesamt-Timeout ({SEND_TIMEOUT_S}s) überschritten. "
+            f"URL: {current_url}"
+        )
+
+
+async def _send_message_impl(page, message: str, file_path: str | None = None) -> str:
+    """Internal implementation of send_message (without timeout guard)."""
     # --- count existing assistant messages (for conversation-continuation) ---
     existing_msgs = await page.query_selector_all(ASSISTANT_MESSAGE)
     previous_count = len(existing_msgs)

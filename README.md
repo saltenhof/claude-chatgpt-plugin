@@ -48,6 +48,9 @@ The MCP server starts automatically when Claude Code launches. After installing 
 |------|-----------|-------------|
 | `chatgpt_send` | `message` (required), `file_path` (optional), `new_chat` (optional, default `true`) | Send a message to ChatGPT, get markdown response |
 | `chatgpt_status` | — | Check browser and login status |
+| `chatgpt_diagnose` | — | Detailed diagnostics including screenshot |
+| `chatgpt_reset` | — | Force-kill browser and clear state |
+| `chatgpt_screenshot` | — | Take a screenshot for visual debugging |
 
 ### Conversation continuation
 
@@ -93,13 +96,16 @@ ChatGPT responses are extracted by clicking the "copy" button on the last assist
 
 ```
 mcp_server.py              FastMCP server (stdio transport)
-  ├── _get_browser()       Lazy-init, cached global ChatGPTBrowser instance
+  ├── _ensure_ready()      Self-healing: liveness check, error dismiss, auto-login
   ├── chatgpt_send()       MCP tool → calls send_message()
-  └── chatgpt_status()     MCP tool → checks browser state
+  ├── chatgpt_status()     MCP tool → checks browser state
+  ├── chatgpt_diagnose()   MCP tool → detailed diagnostics + screenshot
+  ├── chatgpt_reset()      MCP tool → force-kill browser
+  └── chatgpt_screenshot() MCP tool → capture current page
       │
-      ├── chatgpt_bridge.py    Core logic: send_message(), file upload, response extraction
-      ├── browser.py           Playwright lifecycle, navigation retries, stealth
-      └── chatgpt_selectors.py CSS selector registry (German + English variants)
+      ├── chatgpt_bridge.py    Core logic: send_message() with timeout guard, file upload, response extraction
+      ├── browser.py           Playwright lifecycle, navigation retries, stealth, error detection, mode switching
+      └── chatgpt_selectors.py CSS selector registry (German + English, incl. error/recovery selectors)
 ```
 
 ## CLI Usage (for login and debugging)

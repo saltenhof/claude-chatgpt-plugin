@@ -6,3 +6,8 @@ user_data/
 *.egg-info/
 dist/
 build/
+diagnose_screenshot.png
+*.png
+nul
+start-claude*.cmd
+.claude/settings.local.json

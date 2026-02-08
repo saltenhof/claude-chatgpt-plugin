@@ -36,6 +36,34 @@ LOGGED_IN_INDICATORS = (
 )
 
 # ---------------------------------------------------------------------------
+# Error & recovery selectors
+# ---------------------------------------------------------------------------
+
+# Error dialogs: "Something went wrong", "Try again", "Regenerate"
+CHATGPT_ERROR_DIALOGS = (
+    'button:has-text("Try again"), '
+    'button:has-text("Erneut versuchen"), '
+    'button:has-text("Regenerate"), '
+    'button:has-text("Neu generieren"), '
+    'div:has-text("Something went wrong")'
+)
+
+# Session expired indicators (login prompt reappeared)
+SESSION_EXPIRED_INDICATORS = (
+    'text="Session expired", '
+    'text="Sitzung abgelaufen", '
+    'button:has-text("Anmelden"), '
+    'button:has-text("Log in")'
+)
+
+# Cloudflare challenge page
+CLOUDFLARE_CHALLENGE = (
+    '#challenge-stage, '
+    'iframe[src*="challenges.cloudflare.com"], '
+    'div#cf-wrapper'
+)
+
+# ---------------------------------------------------------------------------
 # Chat interaction selectors (used via find_element)
 # ---------------------------------------------------------------------------
 
