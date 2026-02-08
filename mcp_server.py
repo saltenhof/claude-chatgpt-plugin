@@ -210,6 +210,11 @@ async def chatgpt_send(
 ) -> str:
     """Send a message to ChatGPT and return the response as markdown.
 
+    IMPORTANT: The tool result is already visible to the user. Do NOT repeat
+    or quote the response content. Instead, briefly summarize or comment on it,
+    or just confirm that ChatGPT responded. Only repeat specific parts if the
+    user explicitly asks for it.
+
     Args:
         message: The message to send to ChatGPT.
         file_path: Optional absolute path to a file to attach.
