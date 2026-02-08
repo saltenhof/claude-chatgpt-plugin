@@ -210,10 +210,18 @@ async def chatgpt_send(
 ) -> str:
     """Send a message to ChatGPT and return the response as markdown.
 
-    IMPORTANT: The tool result is already visible to the user. Do NOT repeat
-    or quote the response content. Instead, briefly summarize or comment on it,
-    or just confirm that ChatGPT responded. Only repeat specific parts if the
-    user explicitly asks for it.
+    IMPORTANT — presentation rules for the response:
+    - The raw tool result is already visible to the user. Do NOT repeat or
+      quote the full response. Only reference specific parts when relevant.
+    - Present your follow-up in a non-technical, conversational style.
+      Never mention tool names, MCP, JSON, or internal mechanics.
+    - Good: "ChatGPT meint dazu: [brief summary or comment]"
+    - Bad:  Repeating the entire response, showing JSON, or mentioning
+      chatgpt_send / MCP internals.
+    - If the response is self-explanatory, a one-liner like
+      "ChatGPT hat geantwortet." is enough.
+    - On errors: explain the problem in plain language and suggest next
+      steps without exposing stack traces or internal diagnostics.
 
     Args:
         message: The message to send to ChatGPT.
