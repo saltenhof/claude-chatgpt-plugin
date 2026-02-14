@@ -34,7 +34,7 @@ No automated test suite exists — testing is manual via the CLI commands above.
 
 Three-layer design, all async:
 
-1. **`mcp_server.py`** — FastMCP server (stdio transport). Self-healing features: auto-restart on dead browser, auto-dismiss error dialogs, auto-visible-login when session expires. Exposes 5 MCP tools: `chatgpt_send`, `chatgpt_status`, `chatgpt_diagnose`, `chatgpt_reset`, `chatgpt_screenshot`.
+1. **`mcp_server.py`** — FastMCP server (stdio transport). Forces UTF-8 on Windows before any I/O (stdout/stderr reconfigure + PYTHONUTF8 env var). Runs pre-flight validation on startup (playwright, pyperclip, Chrome). Self-healing features: auto-restart on dead browser, auto-dismiss error dialogs, auto-visible-login when session expires. Exposes 6 MCP tools: `chatgpt_send`, `chatgpt_status`, `chatgpt_diagnose`, `chatgpt_reset`, `chatgpt_screenshot`, `chatgpt_health`.
 
 2. **`chatgpt_bridge.py`** — Click CLI entrypoint + core message logic. Two CLI commands: `login` and `send`. The `send_message()` function is reused by the MCP server. Owns the message-sending flow: file upload → type message → press Enter → wait for response → copy via clipboard. Includes overall timeout guard (360s).
 
@@ -62,6 +62,13 @@ The copy-button approach extracts markdown (not plain text):
 - **Selectors**: Always add new selectors to `chatgpt_selectors.py`, never hardcode in bridge/browser code. Include English fallback variants.
 - **Anti-detection**: `playwright-stealth` handles stealth; do not add `--disable-blink-features=AutomationControlled` to Chrome args (causes a visible warning).
 - **Enter key over button click**: Messages are sent via `keyboard.press("Enter")`, not by clicking the send button — more reliable especially with file attachments.
+
+## Encoding
+
+Windows Python defaults to CP1252/CP437 for stdio, but MCP stdio transport expects UTF-8. This is handled at three levels:
+1. **`mcp_server.py`** reconfigures `sys.stdout`/`sys.stderr` to UTF-8 before any I/O
+2. **MCP config** (`.claude.json`, `.mcp.json`) sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` as env vars
+3. **Skill** (`SKILL.md`) checks responses for encoding artifacts (garbled umlauts) in Phase 5
 
 ## Known Issues
 

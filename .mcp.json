@@ -5,7 +5,9 @@
       "args": ["${CLAUDE_PLUGIN_ROOT}/mcp_server.py"],
       "cwd": "${CLAUDE_PLUGIN_ROOT}",
       "env": {
-        "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}"
+        "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}",
+        "PYTHONUTF8": "1",
+        "PYTHONIOENCODING": "utf-8"
       }
     }
   }

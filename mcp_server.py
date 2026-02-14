@@ -13,10 +13,20 @@ Usage:
     claude mcp add chatgpt-bridge -- python mcp_server.py
 """
 
+import os
+import sys
+
+# Force UTF-8 on Windows — must happen before any I/O.
+# MCP stdio transport expects UTF-8, but Windows Python defaults to CP1252/CP437.
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    os.environ.setdefault("PYTHONUTF8", "1")
+
 import asyncio
 import logging
-import sys
 import traceback
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
@@ -32,6 +42,42 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("chatgpt-bridge")
+
+
+# ---------------------------------------------------------------------------
+# Startup validation
+# ---------------------------------------------------------------------------
+
+def _validate_environment():
+    """Pre-flight check: verify all prerequisites before accepting tool calls."""
+    errors = []
+
+    try:
+        import playwright  # noqa: F401
+    except ImportError:
+        errors.append("playwright nicht installiert (pip install playwright)")
+
+    try:
+        import pyperclip  # noqa: F401
+    except ImportError:
+        errors.append("pyperclip nicht installiert (pip install pyperclip)")
+
+    chrome_paths = [
+        Path("C:/Program Files/Google/Chrome/Application/chrome.exe"),
+        Path("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
+    ]
+    if not any(p.exists() for p in chrome_paths):
+        errors.append("Chrome nicht gefunden (erwartet in Program Files)")
+
+    if errors:
+        for error in errors:
+            logger.error("PRE-FLIGHT FAIL: %s", error)
+    else:
+        logger.info("PRE-FLIGHT OK: Alle Voraussetzungen erfuellt")
+
+
+_validate_environment()
+
 
 # ---------------------------------------------------------------------------
 # Persistent browser session
@@ -336,6 +382,16 @@ async def chatgpt_screenshot() -> str:
         return f"Screenshot gespeichert: {path}"
     except Exception as exc:
         return f"Screenshot fehlgeschlagen: {exc}"
+
+
+@mcp.tool()
+async def chatgpt_health() -> str:
+    """Quick health check. Returns 'ok' if MCP server is responsive.
+
+    This is a lightweight liveness probe — no browser interaction.
+    Use this to verify the MCP server is reachable before sending messages.
+    """
+    return "ok"
 
 
 # ---------------------------------------------------------------------------

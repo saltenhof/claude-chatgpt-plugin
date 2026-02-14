@@ -32,6 +32,26 @@ MCP Server + CLI-Tool (Python + Playwright) das Claude Code ermöglicht, mit Cha
 **Problem**: `page.goto("https://chatgpt.com")` schlägt bei ca. jedem zweiten Start fehl (Timeout oder `net::ERR_ABORTED`). Retry-Mechanik mit Browser-Neustart ist eingebaut und hilft.
 **Status**: Workaround funktioniert (3 Retries), Grundursache unklar. Möglicherweise Cloudflare oder Chrome-Profil-Locking.
 
+## Gelöste Bugs
+
+### Encoding-Probleme mit Umlauten (gelöst 2026-02-14)
+**Problem**: ChatGPT-Antworten mit Umlauten (ä, ö, ü, ß) kamen verstümmelt an, weil Python auf Windows standardmäßig CP1252 für stdio nutzt, während JSON-RPC (MCP) UTF-8 erwartet.
+**Lösung**: Dreistufiger Fix:
+1. `mcp_server.py` rekonfiguriert `sys.stdout`/`sys.stderr` auf UTF-8 vor jedem I/O
+2. MCP-Config setzt `PYTHONUTF8=1` und `PYTHONIOENCODING=utf-8` als Umgebungsvariablen
+3. Skill prüft Antworten auf Encoding-Artefakte (Phase 5)
+
+## Neue Features (2026-02-14)
+
+### Health-Check Tool
+- `chatgpt_health()` — leichtgewichtiger Lebendigkeitstest, keine Browser-Interaktion
+- Wird vom Skill in Phase 0 als Pre-Flight-Check genutzt
+
+### Startup-Validierung
+- `_validate_environment()` — prüft playwright, pyperclip, Chrome beim Server-Start
+- Loggt `PRE-FLIGHT OK` oder `PRE-FLIGHT FAIL` auf stderr
+- Server startet trotz Fehlern (Tools schlagen dann graceful fehl)
+
 ## Noch nicht implementiert
 - **Deep Research**: ChatGPT Deep Research anstoßen (langer async Workflow mit Polling)
 - **Model/Modus wechseln**: Dropdown "ChatGPT 5.2 Thinking" umschalten, "Längerer Denkvorgang" → "Standard" etc.
