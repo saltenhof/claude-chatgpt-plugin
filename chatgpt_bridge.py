@@ -8,6 +8,7 @@ Usage:
 
 import asyncio
 import logging
+import re
 import sys
 
 import click
@@ -257,8 +258,11 @@ async def _clear_paste_and_verify(page, textarea, message: str) -> None:
         await page.keyboard.press("Control+V")
         await page.wait_for_timeout(500)
 
-        # Step 3: Verify textarea contains exactly the intended message
-        actual = _normalize_text(await textarea.inner_text())
+        # Step 3: Verify textarea contains the intended message.
+        # Use textContent (not innerText) — ProseMirror wraps pasted text
+        # in <p> elements, and innerText inserts extra newlines between them.
+        actual_raw = await textarea.evaluate("(el) => el.textContent")
+        actual = _normalize_text(actual_raw)
 
         if actual == expected:
             logger.info(
@@ -279,16 +283,26 @@ async def _clear_paste_and_verify(page, textarea, message: str) -> None:
         if attempt < MAX_PASTE_RETRIES:
             await page.wait_for_timeout(500)
 
+    final_raw = await textarea.evaluate("(el) => el.textContent")
+    final_actual = _normalize_text(final_raw)
     raise RuntimeError(
         f"Textarea content mismatch after {MAX_PASTE_RETRIES} attempts. "
-        f"Expected {len(expected)} chars, "
-        f"got {len(_normalize_text(await textarea.inner_text()))} chars."
+        f"Expected {len(expected)} chars, got {len(final_actual)} chars."
     )
 
 
 def _normalize_text(text: str) -> str:
-    """Normalize text for comparison: strip whitespace and unify line endings."""
-    return text.strip().replace("\r\n", "\n").replace("\r", "\n")
+    """Normalize text for verification: strip, unify line endings, collapse whitespace.
+
+    ChatGPT's prompt textarea is a ProseMirror contenteditable div that wraps
+    pasted text in <p> elements.  Both textContent and innerText return extra
+    whitespace (newlines between paragraphs, trailing breaks).  Collapsing all
+    whitespace sequences into a single space makes the comparison resilient to
+    this editor behavior while still catching actual content mismatches.
+    """
+    text = text.strip()
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"\s+", " ", text)
 
 
 async def _wait_and_copy_response(page, previous_count: int = 0) -> str:
