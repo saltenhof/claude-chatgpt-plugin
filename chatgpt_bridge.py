@@ -272,12 +272,28 @@ async def _clear_paste_and_verify(page, textarea, message: str) -> None:
 
         logger.warning(
             "Textarea verification failed (attempt %d/%d): "
-            "expected %d chars, got %d chars. First 100: %r",
+            "expected %d chars, got %d chars.",
             attempt,
             MAX_PASTE_RETRIES,
             len(expected),
             len(actual),
-            actual[:100],
+        )
+        logger.warning("--- RAW textContent (%d chars) ---\n%r", len(actual_raw), actual_raw)
+        logger.warning("--- RAW expected (%d chars) ---\n%r", len(message), message)
+        logger.warning("--- NORMALIZED actual (%d chars) ---\n%r", len(actual), actual[:500])
+        logger.warning("--- NORMALIZED expected (%d chars) ---\n%r", len(expected), expected[:500])
+        # Find first divergence point
+        divergence_idx = next(
+            (idx for idx, (char_a, char_e) in enumerate(zip(actual, expected)) if char_a != char_e),
+            min(len(actual), len(expected)),
+        )
+        logger.warning(
+            "--- DIVERGENCE at char %d --- actual[%d:%d]=%r vs expected[%d:%d]=%r",
+            divergence_idx,
+            max(0, divergence_idx - 20), divergence_idx + 20,
+            actual[max(0, divergence_idx - 20):divergence_idx + 20],
+            max(0, divergence_idx - 20), divergence_idx + 20,
+            expected[max(0, divergence_idx - 20):divergence_idx + 20],
         )
 
         if attempt < MAX_PASTE_RETRIES:
