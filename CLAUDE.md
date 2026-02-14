@@ -42,11 +42,21 @@ Three-layer design, all async:
 
 4. **`chatgpt_selectors.py`** — Central CSS selector registry. Each UI element has multiple fallback selectors (German + English variants). Includes error/recovery selectors (Cloudflare, session expired, error dialogs). The `find_element(page, key)` helper tries all candidates via CSS comma-join. **When ChatGPT changes its frontend, update selectors here.**
 
+### Message Input Strategy
+
+Messages are entered via clipboard paste (not character-by-character typing):
+1. Focus the textarea (`#prompt-textarea`)
+2. Select all existing content (`Ctrl+A`) and delete (`Backspace`) — prevents leftover text
+3. Copy message to OS clipboard (`pyperclip.copy`) and paste (`Ctrl+V`) — instant, no race condition
+4. **Verify**: Read textarea content back via `inner_text()` and compare with expected message
+5. Retry up to 3 times on verification failure, then raise `RuntimeError`
+6. Only after verification passes: press `Enter` to send
+
 ### Response Extraction Strategy
 
 The copy-button approach extracts markdown (not plain text):
 1. Wait for `[data-message-author-role="assistant"]` to appear
-2. Poll until the stop button disappears (generation complete)
+2. Poll until the stop button disappears (generation complete, up to 40 min timeout)
 3. Hover the last `article[data-testid^="conversation-turn"]` to reveal action buttons
 4. Click the copy button (`force=True`) → markdown lands in OS clipboard
 5. Read clipboard via `pyperclip.paste()`
@@ -62,6 +72,8 @@ The copy-button approach extracts markdown (not plain text):
 - **Selectors**: Always add new selectors to `chatgpt_selectors.py`, never hardcode in bridge/browser code. Include English fallback variants.
 - **Anti-detection**: `playwright-stealth` handles stealth; do not add `--disable-blink-features=AutomationControlled` to Chrome args (causes a visible warning).
 - **Enter key over button click**: Messages are sent via `keyboard.press("Enter")`, not by clicking the send button — more reliable especially with file attachments.
+- **Clipboard paste over typing**: Messages are entered via `Ctrl+V` paste, never via `keyboard.type()` or `fill()` — instant, no race condition with Enter key, no leftover text issues.
+- **Timeouts**: Response timeout is 40 min (`RESPONSE_TIMEOUT_MS`), overall send timeout ~41.7 min (`SEND_TIMEOUT_S`), MCP gateway timeout 45 min (`.claude.json` / `.mcp.json`).
 
 ## Encoding
 

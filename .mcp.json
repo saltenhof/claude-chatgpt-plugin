@@ -4,6 +4,7 @@
       "command": "python",
       "args": ["${CLAUDE_PLUGIN_ROOT}/mcp_server.py"],
       "cwd": "${CLAUDE_PLUGIN_ROOT}",
+      "timeout": 2700,
       "env": {
         "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}",
         "PYTHONUTF8": "1",

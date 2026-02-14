@@ -24,13 +24,16 @@ from chatgpt_selectors import (
 logger = logging.getLogger(__name__)
 
 RESPONSE_POLL_INTERVAL_MS = 1000
-RESPONSE_TIMEOUT_MS = 300_000  # 5 minutes
+RESPONSE_TIMEOUT_MS = 2_400_000  # 40 minutes
 
 UPLOAD_TIMEOUT_MS = 60_000
 UPLOAD_POLL_INTERVAL_MS = 500
 
 # Overall timeout for send_message (prevents indefinite blocking)
-SEND_TIMEOUT_S = 360
+SEND_TIMEOUT_S = 2_500  # ~41.7 min, slightly above response timeout
+
+# Clipboard paste verification
+MAX_PASTE_RETRIES = 3
 
 
 # ---------------------------------------------------------------------------
@@ -76,16 +79,9 @@ async def _send_message_impl(page, message: str, file_path: str | None = None) -
     if file_path:
         await _upload_file(page, file_path)
 
-    # --- type message (re-fetch textarea — DOM may have changed after upload) ---
+    # --- clear textarea and paste message via clipboard (verified) ---
     textarea = await find_element(page, "prompt_textarea")
-    await textarea.click()
-    if file_path:
-        # After file upload, use keyboard.type() — fill() on contenteditable
-        # divs can break React's state and swallow the file attachment.
-        await page.keyboard.type(message, delay=20)
-    else:
-        await textarea.fill(message)
-    await page.wait_for_timeout(500)
+    await _clear_paste_and_verify(page, textarea, message)
 
     # --- send via Enter key, fall back to send button ---
     await page.keyboard.press("Enter")
@@ -223,6 +219,76 @@ async def _wait_for_upload_complete(page, timeout_ms: int = UPLOAD_TIMEOUT_MS) -
         elapsed_ms += UPLOAD_POLL_INTERVAL_MS
 
     logger.warning("Upload-Timeout erreicht, sende trotzdem...")
+
+
+async def _clear_paste_and_verify(page, textarea, message: str) -> None:
+    """Clear textarea, paste message via OS clipboard, and verify content.
+
+    Replaces character-by-character typing with instant clipboard paste.
+    This prevents race conditions where Enter is pressed before typing
+    finishes, and ensures no leftover text from previous messages remains.
+
+    Strategy per attempt:
+      1. Focus textarea, select all (Ctrl+A), delete (Backspace)
+      2. Copy message to OS clipboard, paste (Ctrl+V)
+      3. Read textarea content back and compare with expected message
+
+    Args:
+        page: Playwright page object.
+        textarea: The prompt textarea element handle.
+        message: The exact message text to paste.
+
+    Raises:
+        RuntimeError: If verification fails after MAX_PASTE_RETRIES attempts.
+    """
+    expected = _normalize_text(message)
+
+    for attempt in range(1, MAX_PASTE_RETRIES + 1):
+        # Step 1: Focus and clear any existing content
+        await textarea.click()
+        await page.wait_for_timeout(200)
+        await page.keyboard.press("Control+A")
+        await page.wait_for_timeout(100)
+        await page.keyboard.press("Backspace")
+        await page.wait_for_timeout(300)
+
+        # Step 2: Paste via OS clipboard (instant, React-safe)
+        pyperclip.copy(message)
+        await page.keyboard.press("Control+V")
+        await page.wait_for_timeout(500)
+
+        # Step 3: Verify textarea contains exactly the intended message
+        actual = _normalize_text(await textarea.inner_text())
+
+        if actual == expected:
+            logger.info(
+                "Textarea verified (%d chars, attempt %d)", len(expected), attempt
+            )
+            return
+
+        logger.warning(
+            "Textarea verification failed (attempt %d/%d): "
+            "expected %d chars, got %d chars. First 100: %r",
+            attempt,
+            MAX_PASTE_RETRIES,
+            len(expected),
+            len(actual),
+            actual[:100],
+        )
+
+        if attempt < MAX_PASTE_RETRIES:
+            await page.wait_for_timeout(500)
+
+    raise RuntimeError(
+        f"Textarea content mismatch after {MAX_PASTE_RETRIES} attempts. "
+        f"Expected {len(expected)} chars, "
+        f"got {len(_normalize_text(await textarea.inner_text()))} chars."
+    )
+
+
+def _normalize_text(text: str) -> str:
+    """Normalize text for comparison: strip whitespace and unify line endings."""
+    return text.strip().replace("\r\n", "\n").replace("\r", "\n")
 
 
 async def _wait_and_copy_response(page, previous_count: int = 0) -> str:

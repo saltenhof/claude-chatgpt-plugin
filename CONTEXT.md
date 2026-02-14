@@ -34,6 +34,15 @@ MCP Server + CLI-Tool (Python + Playwright) das Claude Code ermöglicht, mit Cha
 
 ## Gelöste Bugs
 
+### Textarea-Verschmutzung und Race Condition beim Senden (gelöst 2026-02-14)
+**Problem**: Bei Konversations-Fortsetzung (new_chat=false) blieb Resttext vom vorherigen Turn in der Eingabebox. Neue Nachricht wurde angehängt statt ersetzt. Zusätzlich wurde Enter gedrückt bevor character-weises `keyboard.type()` abgeschlossen war — unvollständige/verstümmelte Nachrichten an ChatGPT.
+**Lösung**: Kompletter Umbau der Eingabelogik in `chatgpt_bridge.py`:
+1. Textarea wird vor jeder Eingabe explizit geleert (Ctrl+A → Backspace)
+2. Text wird per Clipboard-Paste (Ctrl+V) statt character-by-character eingefügt (instant, kein Race)
+3. Verifikation: Textarea-Inhalt wird nach dem Paste zurückgelesen und mit Soll verglichen
+4. Bis zu 3 Retry-Versuche bei Verifikations-Fehlschlag
+5. Response-Timeout von 5 Min auf 40 Min erhöht, MCP-Gateway-Timeout auf 45 Min
+
 ### Encoding-Probleme mit Umlauten (gelöst 2026-02-14)
 **Problem**: ChatGPT-Antworten mit Umlauten (ä, ö, ü, ß) kamen verstümmelt an, weil Python auf Windows standardmäßig CP1252 für stdio nutzt, während JSON-RPC (MCP) UTF-8 erwartet.
 **Lösung**: Dreistufiger Fix:
